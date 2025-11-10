@@ -1,0 +1,54 @@
+{
+    "crypto": [
+        {
+            "type": "crypto",
+            "coinId": "bitcoin",
+            "symbol": "BTC",
+            "quantity": 0.5
+        },
+        {
+            "type": "crypto",
+            "coinId": "ethereum",
+            "symbol": "ETH",
+            "quantity": 5
+        }
+    ],
+    "stocks": [
+        {
+            "type": "stock",
+            "symbol": "AAPL",
+            "quantity": 10
+        },
+        {
+            "type": "stock",
+            "symbol": "APS.DE",
+            "quantity": 25
+        }
+    ],
+    "realEstate": [
+        {
+            "type": "real-estate",
+            "city": "New York",
+            "squareMeters": 85,
+            "propertyType": "apartment"
+        },
+        {
+            "type": "real-estate",
+            "city": "San Francisco",
+            "squareMeters": 150,
+            "propertyType": "house"
+        }
+    ],
+    "cash": [
+        {
+            "type": "cash",
+            "amount": 50000,
+            "currency": "USD"
+        },
+        {
+            "type": "cash",
+            "amount": 25000,
+            "currency": "EUR"
+        }
+    ]
+}
