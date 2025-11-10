@@ -19,23 +19,24 @@ Since you've connected Supabase to Vercel, most environment variables are **auto
 
 ## Step-by-Step Deployment
 
-### 1. Verify Environment Variables (Optional)
+### 1. Commit Your Code
 
-Since Supabase is connected to Vercel, the environment variables should already be set. You can verify:
+Make sure all changes are committed to git (including migration files):
 
-1. Go to [vercel.com/dashboard](https://vercel.com/dashboard)
-2. Select your project
-3. Go to **Settings** → **Environment Variables**
-4. You should see:
-   - `NEXT_PUBLIC_SUPABASE_URL`
-   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-   - `POSTGRES_URL`
-   - `POSTGRES_PRISMA_URL`
-   - (and other Supabase-related variables)
+```bash
+git add .
+git commit -m "Add wealth tracking feature"
+git push origin main
+```
 
-**If these are missing**, reconnect the Supabase integration in Vercel.
+**Important**: The `drizzle/` folder contains migration files that must be committed to git!
 
 ### 2. Deploy Your App
+
+**Database migrations now run automatically!** When you deploy to Vercel:
+- ✅ Migrations run automatically during the build process
+- ✅ Tables are created/updated automatically
+- ✅ No manual database setup needed!
 
 #### Option A: Deploy via Git (Recommended)
 
@@ -197,6 +198,56 @@ Before going live:
 
 ---
 
+## Database Migrations
+
+### How Automatic Migrations Work
+
+When you deploy to Vercel:
+1. **Build starts** → Dependencies installed
+2. **Next.js builds** → Your app is compiled
+3. **Postbuild hook runs** → `scripts/run-migration-vercel.ts` executes
+4. **Migration script**:
+   - Detects it's running on Vercel
+   - Connects to your Supabase database
+   - Applies all SQL files in `drizzle/` folder
+   - Creates/updates tables with proper RLS policies
+
+### Adding New Tables/Columns
+
+When you need to add new database features:
+
+```bash
+# 1. Update your schema in lib/db/schema.ts
+# (add new tables or columns)
+
+# 2. Generate migration file
+pnpm db:generate
+
+# 3. Test locally (optional)
+pnpm db:push
+
+# 4. Commit and push
+git add drizzle/
+git commit -m "Add new feature"
+git push
+
+# 5. Vercel automatically runs migrations on deploy!
+```
+
+### Manual Migration (Optional)
+
+You normally don't need this since migrations run automatically on Vercel. But if you want to test migrations locally against production:
+
+```bash
+# Pull production environment variables (for local testing only)
+vercel env pull .env.production.local
+
+# Run migrations against production database from your local machine
+pnpm db:push:prod
+```
+
+**Note**: `.env.production.local` is in `.gitignore` and only used for local testing. Vercel uses its own environment variables automatically.
+
 ## Quick Commands Reference
 
 ```bash
@@ -214,6 +265,15 @@ vercel logs
 
 # Pull environment variables locally
 vercel env pull .env.local
+
+# Generate database migrations
+pnpm db:generate
+
+# Apply migrations locally
+pnpm db:push
+
+# Apply migrations to production manually
+pnpm db:push:prod
 ```
 
 Happy deploying! 🚀

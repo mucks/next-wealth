@@ -1,4 +1,6 @@
 import { Asset, CryptoAsset, StockAsset, RealEstateAsset, CashAsset } from '@/types/assets';
+import { useState, useEffect } from 'react';
+import { convertToUSD } from '@/services/currencyService';
 
 interface AssetListProps {
     assets: Asset[];
@@ -7,10 +9,43 @@ interface AssetListProps {
 }
 
 export function AssetList({ assets, onDelete, onEdit }: AssetListProps) {
-    const formatCurrency = (value: number) => {
+    const [cashUSDValues, setCashUSDValues] = useState<{ [key: string]: number }>({});
+
+    // Convert cash values to USD
+    useEffect(() => {
+        // First, immediately set USD values (no conversion needed)
+        const initialValues: { [key: string]: number } = {};
+        for (const asset of assets) {
+            if (asset.type === 'cash') {
+                const cashAsset = asset as CashAsset;
+                if (cashAsset.currency === 'USD') {
+                    initialValues[asset.id] = cashAsset.amount;
+                }
+            }
+        }
+        setCashUSDValues(initialValues);
+
+        // Then convert non-USD currencies
+        const convertAllCash = async () => {
+            const newValues: { [key: string]: number } = {};
+
+            for (const asset of assets) {
+                if (asset.type === 'cash') {
+                    const cashAsset = asset as CashAsset;
+                    newValues[asset.id] = await convertToUSD(cashAsset.amount, cashAsset.currency);
+                }
+            }
+
+            setCashUSDValues(newValues);
+        };
+
+        convertAllCash();
+    }, [assets]);
+
+    const formatCurrency = (value: number, currency: string = 'USD') => {
         return new Intl.NumberFormat('en-US', {
             style: 'currency',
-            currency: 'USD',
+            currency: currency,
             minimumFractionDigits: 2,
             maximumFractionDigits: 2,
         }).format(value);
@@ -31,8 +66,8 @@ export function AssetList({ assets, onDelete, onEdit }: AssetListProps) {
         if (asset.type === 'real-estate') {
             return asset.squareMeters * asset.pricePerSqm;
         }
-        // cash
-        return asset.amount;
+        // cash - use converted USD value if available
+        return cashUSDValues[asset.id] || (asset as CashAsset).amount;
     };
 
     const calculateGainLoss = (asset: Asset) => {
@@ -183,15 +218,20 @@ export function AssetList({ assets, onDelete, onEdit }: AssetListProps) {
                                         {asset.type === 'cash' && (
                                             <>
                                                 <div>
+                                                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Amount</p>
+                                                    <p className="font-semibold text-gray-900 dark:text-white">
+                                                        {formatCurrency((asset as CashAsset).amount, (asset as CashAsset).currency)}
+                                                    </p>
+                                                    {(asset as CashAsset).currency !== 'USD' && cashUSDValues[asset.id] && (
+                                                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                                            ≈ {formatCurrency(cashUSDValues[asset.id], 'USD')}
+                                                        </p>
+                                                    )}
+                                                </div>
+                                                <div>
                                                     <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Currency</p>
                                                     <p className="font-semibold text-gray-900 dark:text-white">
                                                         {(asset as CashAsset).currency}
-                                                    </p>
-                                                </div>
-                                                <div>
-                                                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Amount</p>
-                                                    <p className="font-semibold text-gray-900 dark:text-white">
-                                                        {formatCurrency((asset as CashAsset).amount)}
                                                     </p>
                                                 </div>
                                             </>

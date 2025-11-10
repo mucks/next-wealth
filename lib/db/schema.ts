@@ -57,3 +57,33 @@ export const priceCache = pgTable('price_cache', {
 export type PriceCache = typeof priceCache.$inferSelect;
 export type NewPriceCache = typeof priceCache.$inferInsert;
 
+// User settings table - for preferences like wealth tracking
+export const userSettings = pgTable('user_settings', {
+    userId: uuid('user_id').primaryKey().notNull(),
+    wealthTrackingEnabled: text('wealth_tracking_enabled').default('false').notNull(), // 'true' or 'false'
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export type UserSettings = typeof userSettings.$inferSelect;
+export type NewUserSettings = typeof userSettings.$inferInsert;
+
+// Wealth history table - daily snapshots of total wealth
+export const wealthHistory = pgTable('wealth_history', {
+    id: text('id').primaryKey(), // userId-YYYY-MM-DD format
+    userId: uuid('user_id').notNull(),
+    date: text('date').notNull(), // YYYY-MM-DD format
+    totalValue: decimal('total_value').notNull(),
+    cryptoValue: decimal('crypto_value').notNull(),
+    stocksValue: decimal('stocks_value').notNull(),
+    realEstateValue: decimal('real_estate_value').notNull(),
+    cashValue: decimal('cash_value').notNull(), // Already converted to USD
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => ({
+    userIdIdx: index('wealth_history_user_id_idx').on(table.userId),
+    dateIdx: index('wealth_history_date_idx').on(table.date),
+}));
+
+export type WealthHistory = typeof wealthHistory.$inferSelect;
+export type NewWealthHistory = typeof wealthHistory.$inferInsert;
+

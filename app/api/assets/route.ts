@@ -71,14 +71,19 @@ export async function POST(request: NextRequest) {
         const body = await request.json();
         let assetData = { ...body, userId: user.id };
 
+        // Check if we should skip price fetching (for bulk imports)
+        const { searchParams } = new URL(request.url);
+        const skipPrice = searchParams.get('skipPrice') === 'true';
+
         // If creating crypto/stock/real-estate and price is 0 or missing, try to get from cache
-        if (body.type === 'crypto' && body.coinId && (!body.currentPrice || parseFloat(body.currentPrice) === 0)) {
+        // Skip this during bulk imports for better performance
+        if (!skipPrice && body.type === 'crypto' && body.coinId && (!body.currentPrice || parseFloat(body.currentPrice) === 0)) {
             const priceData = await getCachedPrice(body.coinId, 'crypto');
             if (priceData) {
                 assetData.currentPrice = priceData.price.toString();
                 assetData.priceChange24h = priceData.priceChange24h?.toString() || null;
             }
-        } else if (body.type === 'stock' && body.symbol && (!body.currentPrice || parseFloat(body.currentPrice) === 0)) {
+        } else if (!skipPrice && body.type === 'stock' && body.symbol && (!body.currentPrice || parseFloat(body.currentPrice) === 0)) {
             const priceData = await getCachedPrice(body.symbol, 'stock');
             if (priceData) {
                 assetData.currentPrice = priceData.price.toString();
@@ -87,7 +92,7 @@ export async function POST(request: NextRequest) {
                     assetData.name = priceData.name;
                 }
             }
-        } else if (body.type === 'real-estate' && body.city && body.propertyType && (!body.pricePerSqm || parseFloat(body.pricePerSqm) === 0)) {
+        } else if (!skipPrice && body.type === 'real-estate' && body.city && body.propertyType && (!body.pricePerSqm || parseFloat(body.pricePerSqm) === 0)) {
             const cacheId = `${body.city}-${body.propertyType}`;
             const priceData = await getCachedPrice(cacheId, 'real-estate', { city: body.city, propertyType: body.propertyType });
             if (priceData) {

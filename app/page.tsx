@@ -12,10 +12,12 @@ import { AuthModal } from '@/components/AuthModal';
 import { DeleteAllModal } from '@/components/DeleteAllModal';
 import { Toast } from '@/components/Toast';
 import { ConfirmModal } from '@/components/ConfirmModal';
+import { WealthTrackingGraph } from '@/components/WealthTrackingGraph';
 import { useTheme } from '@/hooks/useTheme';
 import { createClient } from '@/lib/supabase/client';
 import { fetchUserPortfolio, createAsset as createAssetInDb, updateAsset, deleteAsset } from '@/lib/db/assets';
 import type { User } from '@supabase/supabase-js';
+import { convertCashAssetsToUSD } from '@/services/currencyService';
 
 export default function Home() {
   const { theme, toggleTheme } = useTheme();
@@ -39,6 +41,9 @@ export default function Home() {
     message: string;
     onConfirm: () => void;
   } | null>(null);
+  const [importProgress, setImportProgress] = useState<{ current: number; total: number; status: string } | null>(null);
+  const [wealthTrackingEnabled, setWealthTrackingEnabled] = useState(false);
+  const [lastSnapshotDate, setLastSnapshotDate] = useState<string | null>(null);
 
   const supabase = createClient();
 
@@ -109,6 +114,144 @@ export default function Home() {
       console.error('Error loading portfolio:', error);
     }
   };
+
+  const loadWealthTrackingSettings = async () => {
+    try {
+      const response = await fetch('/api/settings');
+      if (response.ok) {
+        const data = await response.json();
+        setWealthTrackingEnabled(data.wealthTrackingEnabled);
+
+        // If tracking is enabled, load the last snapshot date
+        if (data.wealthTrackingEnabled) {
+          const historyResponse = await fetch('/api/wealth-history');
+          if (historyResponse.ok) {
+            const history = await historyResponse.json();
+            if (history.length > 0) {
+              // History is ordered by date descending, so first item is the latest
+              setLastSnapshotDate(history[0].date);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error loading wealth tracking settings:', error);
+    }
+  };
+
+  const toggleWealthTracking = async () => {
+    try {
+      const newValue = !wealthTrackingEnabled;
+      const response = await fetch('/api/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wealthTrackingEnabled: newValue }),
+      });
+
+      if (response.ok) {
+        setWealthTrackingEnabled(newValue);
+        setToast({
+          message: `Wealth tracking ${newValue ? 'enabled' : 'disabled'}!`,
+          type: 'success',
+        });
+
+        // If enabling, create an initial snapshot (with a small delay to ensure setting is saved)
+        if (newValue) {
+          setTimeout(async () => {
+            const success = await createWealthSnapshot();
+            if (success) {
+              setToast({ message: 'Initial snapshot created!', type: 'success' });
+            }
+          }, 500);
+        }
+      } else {
+        throw new Error('Failed to update settings');
+      }
+    } catch (error) {
+      console.error('Error toggling wealth tracking:', error);
+      setToast({ message: 'Failed to update wealth tracking setting', type: 'error' });
+    }
+  };
+
+  const createWealthSnapshot = async () => {
+    try {
+      // Calculate total values
+      const cryptoValue = portfolio.crypto.reduce(
+        (sum, asset) => sum + asset.quantity * asset.currentPrice,
+        0
+      );
+      const stocksValue = portfolio.stocks.reduce(
+        (sum, asset) => sum + asset.quantity * asset.currentPrice,
+        0
+      );
+      const realEstateValue = portfolio.realEstate.reduce(
+        (sum, asset) => sum + asset.squareMeters * asset.pricePerSqm,
+        0
+      );
+      const cashValue = await convertCashAssetsToUSD(
+        portfolio.cash.map(asset => ({ amount: asset.amount, currency: asset.currency }))
+      );
+      const totalValue = cryptoValue + stocksValue + realEstateValue + cashValue;
+
+      const response = await fetch('/api/wealth-history', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          totalValue,
+          cryptoValue,
+          stocksValue,
+          realEstateValue,
+          cashValue,
+        }),
+      });
+
+      if (response.ok) {
+        const today = new Date().toISOString().split('T')[0];
+        setLastSnapshotDate(today);
+        return true;
+      } else {
+        const errorData = await response.json();
+        console.error('Snapshot API error:', errorData);
+        throw new Error(errorData.error || 'Failed to create snapshot');
+      }
+    } catch (error) {
+      console.error('Error creating wealth snapshot:', error);
+      return false;
+    }
+  };
+
+  // Load wealth tracking settings when user logs in
+  useEffect(() => {
+    if (user) {
+      loadWealthTrackingSettings();
+    }
+  }, [user]);
+
+  // Auto-create daily snapshot
+  useEffect(() => {
+    if (!user || !wealthTrackingEnabled) return;
+
+    const checkAndCreateSnapshot = async () => {
+      const today = new Date().toISOString().split('T')[0];
+
+      // Only create a snapshot if we haven't created one today
+      if (lastSnapshotDate !== today && portfolio.crypto.length + portfolio.stocks.length + portfolio.realEstate.length + portfolio.cash.length > 0) {
+        console.log('📸 Creating automatic daily snapshot...');
+        const success = await createWealthSnapshot();
+        if (success) {
+          console.log('✅ Daily snapshot created successfully');
+        }
+      }
+    };
+
+    // Check immediately when user logs in or portfolio changes
+    checkAndCreateSnapshot();
+
+    // Also check every hour to catch day changes
+    const intervalId = setInterval(checkAndCreateSnapshot, 60 * 60 * 1000);
+
+    return () => clearInterval(intervalId);
+  }, [user, wealthTrackingEnabled, portfolio, lastSnapshotDate]);
 
   const handleAddAsset = async (asset: Asset) => {
     try {
@@ -201,7 +344,9 @@ export default function Home() {
     input.accept = 'application/json';
     input.onchange = async (e: Event) => {
       const file = (e.target as HTMLInputElement).files?.[0];
-      if (!file) return;
+      if (!file) {
+        return;
+      }
 
       try {
         const text = await file.text();
@@ -223,52 +368,101 @@ export default function Home() {
 
         let successCount = 0;
         let errorCount = 0;
+        const totalAssets = allAssets.length;
 
-        for (const asset of allAssets) {
+        // Show import progress
+        setImportProgress({ current: 0, total: totalAssets, status: 'Importing assets...' });
+
+        for (let i = 0; i < allAssets.length; i++) {
+          const asset: any = allAssets[i]; // Use any to avoid type narrowing issues
+
           try {
+            // Update progress
+            setImportProgress({ current: i + 1, total: totalAssets, status: 'Importing assets...' });
+
             // Generate a new unique ID for this asset
-            const baseAsset = {
-              ...asset,
-              id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
-              // Fill in defaults for missing fields
-              name: asset.name || (asset.type === 'crypto' ? asset.symbol : asset.type === 'stock' ? asset.symbol : asset.type === 'cash' ? `${asset.currency} Cash` : asset.city || 'Property'),
+            const newId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+
+            // Build the asset based on type with all required fields
+            let newAsset: any = {
+              id: newId,
+              type: asset.type,
               purchaseDate: asset.purchaseDate || new Date().toISOString().split('T')[0],
               notes: asset.notes || '',
             };
 
-            // Add type-specific defaults
-            let newAsset: any = baseAsset;
-
-            if (asset.type === 'crypto' || asset.type === 'stock') {
+            if (asset.type === 'crypto') {
               newAsset = {
-                ...baseAsset,
+                ...newAsset,
+                coinId: asset.coinId || '',
+                symbol: asset.symbol || '',
+                quantity: asset.quantity || 0,
+                name: asset.name || asset.symbol || asset.coinId,
+                currentPrice: asset.currentPrice || 0,
+                priceChange24h: asset.priceChange24h || 0,
+              };
+            } else if (asset.type === 'stock') {
+              newAsset = {
+                ...newAsset,
+                symbol: asset.symbol || '',
+                quantity: asset.quantity || 0,
+                name: asset.name || asset.symbol,
                 currentPrice: asset.currentPrice || 0,
                 priceChange24h: asset.priceChange24h || 0,
               };
             } else if (asset.type === 'real-estate') {
               newAsset = {
-                ...baseAsset,
+                ...newAsset,
+                city: asset.city || '',
+                squareMeters: asset.squareMeters || 0,
+                propertyType: asset.propertyType || 'apartment',
+                name: asset.name || `${asset.city} ${asset.propertyType}`,
                 address: asset.address || '',
                 pricePerSqm: asset.pricePerSqm || 0,
+              };
+            } else if (asset.type === 'cash') {
+              newAsset = {
+                ...newAsset,
+                amount: asset.amount || 0,
+                currency: asset.currency || 'USD',
+                name: asset.name || `${asset.currency} Cash`,
               };
             }
 
             // Small delay to ensure unique timestamps
-            await new Promise(resolve => setTimeout(resolve, 1));
+            await new Promise(resolve => setTimeout(resolve, 2));
 
-            await createAssetInDb(newAsset);
+            // Skip price fetching during import for speed (we'll fetch all at once later)
+            await createAssetInDb(newAsset, true);
             successCount++;
           } catch (error) {
             let identifier = 'unknown';
             if ('name' in asset && asset.name) identifier = asset.name;
             else if ('symbol' in asset && asset.symbol) identifier = asset.symbol;
             else if ('city' in asset && asset.city) identifier = asset.city;
-            console.error('Error importing asset:', identifier, error);
+            console.error('Error importing asset:', identifier, 'Asset data:', asset, 'Error:', error);
             errorCount++;
           }
         }
 
+        // Reload portfolio to show imported assets
         await loadPortfolio();
+
+        // Show price refresh status
+        setImportProgress({ current: totalAssets, total: totalAssets, status: 'Updating prices...' });
+
+        // Trigger immediate price refresh for newly imported assets
+        try {
+          const response = await fetch('/api/refresh-prices', { method: 'POST' });
+          if (response.ok) {
+            await loadPortfolio(); // Reload again with updated prices
+          }
+        } catch (error) {
+          console.error('Error refreshing prices after import:', error);
+        }
+
+        // Hide import progress
+        setImportProgress(null);
 
         if (errorCount > 0) {
           setToast({ message: `Imported ${successCount} assets, ${errorCount} failed`, type: 'info' });
@@ -277,7 +471,8 @@ export default function Home() {
         }
       } catch (error) {
         console.error('Error importing file:', error);
-        setToast({ message: 'Failed to import file. Please check the file format.', type: 'error' });
+        setImportProgress(null);
+        setToast({ message: `Failed to import file: ${error instanceof Error ? error.message : 'Unknown error'}`, type: 'error' });
       }
     };
     input.click();
@@ -459,6 +654,64 @@ export default function Home() {
         {/* Wealth Overview */}
         <WealthOverview portfolio={portfolio} />
 
+        {/* Wealth Tracking Settings */}
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6 border border-gray-200 dark:border-gray-700">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={wealthTrackingEnabled}
+                  onChange={toggleWealthTracking}
+                  className="w-5 h-5 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"
+                />
+                <div>
+                  <span className="text-lg font-semibold text-gray-900 dark:text-white">
+                    Track Wealth Over Time
+                  </span>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    {wealthTrackingEnabled
+                      ? 'Automatically save daily snapshots of your portfolio value'
+                      : 'Enable to see your wealth history and trends'}
+                  </p>
+                </div>
+              </label>
+            </div>
+
+            {wealthTrackingEnabled && (
+              <button
+                onClick={async () => {
+                  try {
+                    const success = await createWealthSnapshot();
+                    if (success) {
+                      setToast({ message: 'Snapshot created successfully!', type: 'success' });
+                    } else {
+                      setToast({ message: 'Failed to create snapshot. Check console for details.', type: 'error' });
+                    }
+                  } catch (error) {
+                    console.error('Snapshot button error:', error);
+                    setToast({ message: 'Error creating snapshot', type: 'error' });
+                  }
+                }}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white font-medium rounded-lg shadow-sm transition-all flex items-center gap-2"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                Take Snapshot Now
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Wealth Tracking Graph */}
+        {wealthTrackingEnabled && (
+          <div className="mb-6">
+            <WealthTrackingGraph isEnabled={wealthTrackingEnabled} />
+          </div>
+        )}
+
         {/* Tabs */}
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm mb-6 p-1 flex gap-2 border border-gray-200 dark:border-gray-700">
           {[
@@ -522,6 +775,43 @@ export default function Home() {
             onCancel={() => setConfirmDialog(null)}
             type="danger"
           />
+        )}
+
+        {/* Import Progress Modal */}
+        {importProgress && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-8 max-w-md w-full mx-4">
+              <div className="text-center">
+                <div className="mb-4">
+                  <svg className="animate-spin h-12 w-12 mx-auto text-blue-600 dark:text-blue-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                </div>
+                <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+                  {importProgress.status}
+                </h3>
+                <p className="text-gray-600 dark:text-gray-400 mb-4">
+                  {importProgress.status === 'Updating prices...' ? (
+                    <>Please wait, this may take a moment...</>
+                  ) : (
+                    <>{importProgress.current} of {importProgress.total} assets</>
+                  )}
+                </p>
+                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3 overflow-hidden">
+                  <div
+                    className="bg-blue-600 dark:bg-blue-500 h-full transition-all duration-300 ease-out"
+                    style={{ width: `${(importProgress.current / importProgress.total) * 100}%` }}
+                  ></div>
+                </div>
+                {importProgress.status === 'Importing assets...' && (
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-3">
+                    Creating assets in database...
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
         )}
 
         {/* Toast Notifications */}

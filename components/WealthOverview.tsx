@@ -1,10 +1,14 @@
 import { Portfolio } from '@/types/assets';
+import { useState, useEffect } from 'react';
+import { convertCashAssetsToUSD } from '@/services/currencyService';
 
 interface WealthOverviewProps {
     portfolio: Portfolio;
 }
 
 export function WealthOverview({ portfolio }: WealthOverviewProps) {
+    const [cashValueUSD, setCashValueUSD] = useState(0);
+
     const calculateCryptoValue = () => {
         return portfolio.crypto.reduce((sum, asset) => sum + asset.quantity * asset.currentPrice, 0);
     };
@@ -17,9 +21,27 @@ export function WealthOverview({ portfolio }: WealthOverviewProps) {
         return portfolio.realEstate.reduce((sum, asset) => sum + (asset.squareMeters * asset.pricePerSqm), 0);
     };
 
-    const calculateCashValue = () => {
-        return portfolio.cash.reduce((sum, asset) => sum + asset.amount, 0);
-    };
+    // Convert all cash to USD (including non-USD currencies)
+    useEffect(() => {
+        // Immediately set USD cash (no conversion needed)
+        const usdCashSum = portfolio.cash
+            .filter(asset => asset.currency === 'USD')
+            .reduce((sum, asset) => sum + asset.amount, 0);
+
+        setCashValueUSD(usdCashSum);
+
+        // Then convert non-USD currencies and update
+        const convertCash = async () => {
+            const usdValue = await convertCashAssetsToUSD(
+                portfolio.cash.map(asset => ({ amount: asset.amount, currency: asset.currency }))
+            );
+            setCashValueUSD(usdValue);
+        };
+
+        if (portfolio.cash.length > 0) {
+            convertCash();
+        }
+    }, [portfolio.cash]);
 
     const calculateCryptoGainLoss = () => {
         // For crypto, we just show current value since we don't track purchase price
@@ -39,8 +61,7 @@ export function WealthOverview({ portfolio }: WealthOverviewProps) {
     const cryptoValue = calculateCryptoValue();
     const stocksValue = calculateStocksValue();
     const realEstateValue = calculateRealEstateValue();
-    const cashValue = calculateCashValue();
-    const totalValue = cryptoValue + stocksValue + realEstateValue + cashValue;
+    const totalValue = cryptoValue + stocksValue + realEstateValue + cashValueUSD;
 
     const totalGainLoss = calculateCryptoGainLoss() + calculateStocksGainLoss() + calculateRealEstateGainLoss();
     const totalGainLossPercent = totalValue > 0 ? (totalGainLoss / (totalValue - totalGainLoss)) * 100 : 0;
@@ -81,7 +102,7 @@ export function WealthOverview({ portfolio }: WealthOverviewProps) {
         },
         {
             name: 'Cash',
-            value: cashValue,
+            value: cashValueUSD,
             color: 'bg-emerald-500',
             textColor: 'text-emerald-600',
             bgLight: 'bg-emerald-50',

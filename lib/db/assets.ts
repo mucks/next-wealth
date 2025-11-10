@@ -18,10 +18,11 @@ export async function fetchUserPortfolio(): Promise<Portfolio> {
     }
 }
 
-export async function createAsset(asset: Asset): Promise<Asset> {
+export async function createAsset(asset: Asset, skipPriceFetch = false): Promise<Asset> {
     const dbAsset = mapAssetToDbAsset(asset);
 
-    const response = await fetch('/api/assets', {
+    const url = skipPriceFetch ? '/api/assets?skipPrice=true' : '/api/assets';
+    const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(dbAsset),

@@ -5,11 +5,13 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "postbuild": "tsx scripts/run-migration-vercel.ts",
     "start": "next start",
     "lint": "eslint",
-    "db:push": "drizzle-kit push",
-    "db:push:prod": "dotenv -e test.env -- drizzle-kit push",
-    "db:studio": "drizzle-kit studio"
+    "db:push": "tsx scripts/run-migration.ts .env.local",
+    "db:push:prod": "tsx scripts/run-migration.ts .env.production.local",
+    "db:studio": "drizzle-kit studio",
+    "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
     "@supabase/ssr": "^0.7.0",
@@ -18,7 +20,8 @@
     "next": "16.0.1",
     "postgres": "^3.4.7",
     "react": "19.2.0",
-    "react-dom": "19.2.0"
+    "react-dom": "19.2.0",
+    "tsx": "^4.20.6"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
