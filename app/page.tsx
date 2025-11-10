@@ -13,16 +13,16 @@ import { DeleteAllModal } from '@/components/DeleteAllModal';
 import { Toast } from '@/components/Toast';
 import { ConfirmModal } from '@/components/ConfirmModal';
 import { WealthTrackingGraph } from '@/components/WealthTrackingGraph';
-import { useTheme } from '@/hooks/useTheme';
 import { createClient } from '@/lib/supabase/client';
 import { fetchUserPortfolio, createAsset as createAssetInDb, updateAsset, deleteAsset } from '@/lib/db/assets';
 import type { User } from '@supabase/supabase-js';
 import { convertCashAssetsToUSD } from '@/services/currencyService';
+import { isDemoMode, enableDemoMode, disableDemoMode, getDemoPortfolio, saveDemoPortfolio, addDemoAsset, updateDemoAsset, deleteDemoAsset, deleteAllDemoAssets } from '@/lib/demoMode';
 
 export default function Home() {
-  const { theme, toggleTheme } = useTheme();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [demoMode, setDemoMode] = useState(false);
   const [refreshingPrices, setRefreshingPrices] = useState(false);
   const [portfolio, setPortfolio] = useState<Portfolio>({
     crypto: [],
@@ -49,6 +49,18 @@ export default function Home() {
 
   // Check auth state and load portfolio
   useEffect(() => {
+    // Check for demo mode first
+    const isDemo = isDemoMode();
+    setDemoMode(isDemo);
+
+    if (isDemo) {
+      setLoading(false);
+      // Load demo portfolio directly
+      const demoData = getDemoPortfolio();
+      setPortfolio(demoData);
+      return;
+    }
+
     // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
@@ -81,9 +93,9 @@ export default function Home() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Auto-refresh prices every 20 seconds
+  // Auto-refresh prices every 20 seconds (only for logged-in users, not demo mode)
   useEffect(() => {
-    if (!user) return;
+    if (!user || demoMode) return;
 
     const refreshPrices = async () => {
       try {
@@ -108,8 +120,13 @@ export default function Home() {
 
   const loadPortfolio = async () => {
     try {
-      const data = await fetchUserPortfolio();
-      setPortfolio(data);
+      if (demoMode) {
+        const demoData = getDemoPortfolio();
+        setPortfolio(demoData);
+      } else {
+        const data = await fetchUserPortfolio();
+        setPortfolio(data);
+      }
     } catch (error) {
       console.error('Error loading portfolio:', error);
     }
@@ -255,9 +272,15 @@ export default function Home() {
 
   const handleAddAsset = async (asset: Asset) => {
     try {
-      await createAssetInDb(asset);
-      await loadPortfolio(); // Reload from database
-      setToast({ message: 'Asset added successfully!', type: 'success' });
+      if (demoMode) {
+        addDemoAsset(asset);
+        await loadPortfolio();
+        setToast({ message: 'Asset added successfully! (Demo Mode)', type: 'success' });
+      } else {
+        await createAssetInDb(asset);
+        await loadPortfolio(); // Reload from database
+        setToast({ message: 'Asset added successfully!', type: 'success' });
+      }
     } catch (error) {
       console.error('Error adding asset:', error);
       setToast({ message: 'Failed to add asset. Please try again.', type: 'error' });
@@ -266,9 +289,15 @@ export default function Home() {
 
   const handleUpdateAsset = async (asset: Asset) => {
     try {
-      await updateAsset(asset);
-      await loadPortfolio(); // Reload from database
-      setToast({ message: 'Asset updated successfully!', type: 'success' });
+      if (demoMode) {
+        updateDemoAsset(asset);
+        await loadPortfolio();
+        setToast({ message: 'Asset updated successfully! (Demo Mode)', type: 'success' });
+      } else {
+        await updateAsset(asset);
+        await loadPortfolio(); // Reload from database
+        setToast({ message: 'Asset updated successfully!', type: 'success' });
+      }
     } catch (error) {
       console.error('Error updating asset:', error);
       setToast({ message: 'Failed to update asset. Please try again.', type: 'error' });
@@ -282,9 +311,15 @@ export default function Home() {
       onConfirm: async () => {
         setConfirmDialog(null);
         try {
-          await deleteAsset(id);
-          await loadPortfolio();
-          setToast({ message: 'Asset deleted successfully!', type: 'success' });
+          if (demoMode) {
+            deleteDemoAsset(id, type);
+            await loadPortfolio();
+            setToast({ message: 'Asset deleted successfully! (Demo Mode)', type: 'success' });
+          } else {
+            await deleteAsset(id);
+            await loadPortfolio();
+            setToast({ message: 'Asset deleted successfully!', type: 'success' });
+          }
         } catch (error) {
           console.error('Error deleting asset:', error);
           setToast({ message: 'Failed to delete asset. Please try again.', type: 'error' });
@@ -294,7 +329,14 @@ export default function Home() {
   };
 
   const handleSignOut = async () => {
-    await supabase.auth.signOut();
+    if (demoMode) {
+      disableDemoMode();
+      setDemoMode(false);
+      setPortfolio({ crypto: [], stocks: [], realEstate: [], cash: [] });
+      setToast({ message: 'Demo mode ended', type: 'info' });
+    } else {
+      await supabase.auth.signOut();
+    }
   };
 
   const handleEdit = (asset: Asset) => {
@@ -304,6 +346,13 @@ export default function Home() {
 
   const handleDeleteAll = async () => {
     try {
+      if (demoMode) {
+        deleteAllDemoAssets();
+        await loadPortfolio();
+        setToast({ message: 'All demo assets deleted!', type: 'success' });
+        return;
+      }
+
       const response = await fetch('/api/assets/delete-all', {
         method: 'DELETE',
       });
@@ -506,34 +555,15 @@ export default function Home() {
     );
   }
 
-  // Show auth prompt if not logged in
-  if (!user) {
+  // Show auth prompt if not logged in and not in demo mode
+  if (!user && !demoMode) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 transition-colors">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           {/* Header */}
-          <div className="mb-8 flex justify-between items-start">
-            <div>
-              <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-2">Wealth Tracker</h1>
-              <p className="text-gray-600 dark:text-gray-300">Track your wealth across crypto, stocks, real estate, and cash</p>
-            </div>
-
-            {/* Theme Toggle Button */}
-            <button
-              onClick={toggleTheme}
-              className="p-3 rounded-lg bg-white dark:bg-gray-800 shadow-md hover:shadow-lg transition-all border border-gray-200 dark:border-gray-700"
-              aria-label="Toggle theme"
-            >
-              {theme === 'light' ? (
-                <svg className="w-6 h-6 text-gray-800" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-                </svg>
-              ) : (
-                <svg className="w-6 h-6 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-                </svg>
-              )}
-            </button>
+          <div className="mb-8">
+            <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-2">Wealth Tracker</h1>
+            <p className="text-gray-600 dark:text-gray-300">Track your wealth across crypto, stocks, real estate, and cash</p>
           </div>
 
           {/* Welcome Card */}
@@ -541,14 +571,30 @@ export default function Home() {
             <div className="text-6xl mb-6">📊</div>
             <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">Welcome to Wealth Tracker</h2>
             <p className="text-gray-600 dark:text-gray-300 mb-8 max-w-md mx-auto">
-              Track your investments across crypto, stocks, real estate, and cash. Create an account to get started.
+              Track your investments across crypto, stocks, real estate, and cash. Create an account to get started or try the demo.
             </p>
-            <button
-              onClick={() => setIsAuthModalOpen(true)}
-              className="bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white font-semibold py-3 px-8 rounded-lg shadow-md transition-all hover:shadow-lg"
-            >
-              Sign In / Sign Up
-            </button>
+            <div className="flex gap-4 justify-center">
+              <button
+                onClick={() => setIsAuthModalOpen(true)}
+                className="bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white font-semibold py-3 px-8 rounded-lg shadow-md transition-all hover:shadow-lg"
+              >
+                Sign In / Sign Up
+              </button>
+              <button
+                onClick={() => {
+                  enableDemoMode();
+                  setDemoMode(true);
+                  setLoading(false);
+                  // Load demo portfolio directly
+                  const demoData = getDemoPortfolio();
+                  setPortfolio(demoData);
+                  setToast({ message: 'Demo mode activated! Try adding assets.', type: 'info' });
+                }}
+                className="bg-gray-600 hover:bg-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 text-white font-semibold py-3 px-8 rounded-lg shadow-md transition-all hover:shadow-lg"
+              >
+                Try Demo
+              </button>
+            </div>
           </div>
 
           {/* Auth Modal */}
@@ -582,7 +628,11 @@ export default function Home() {
               Track your wealth across crypto, stocks, real estate, and cash
             </p>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-              Signed in as {user.email} • Prices auto-refresh every 20s
+              {demoMode ? (
+                <>🎮 Demo Mode - Data saved locally in your browser</>
+              ) : (
+                <>Signed in as {user?.email} • Prices auto-refresh every 20s</>
+              )}
             </p>
           </div>
 
@@ -624,92 +674,105 @@ export default function Home() {
               <span className="hidden sm:inline">Delete All</span>
             </button>
 
-            {/* Theme Toggle Button */}
-            <button
-              onClick={toggleTheme}
-              className="p-3 rounded-lg bg-white dark:bg-gray-800 shadow-md hover:shadow-lg transition-all border border-gray-200 dark:border-gray-700"
-              aria-label="Toggle theme"
-            >
-              {theme === 'light' ? (
-                <svg className="w-6 h-6 text-gray-800" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-                </svg>
-              ) : (
-                <svg className="w-6 h-6 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-                </svg>
-              )}
-            </button>
-
             {/* Sign Out Button */}
             <button
               onClick={handleSignOut}
               className="px-4 py-2 rounded-lg bg-white dark:bg-gray-800 shadow-md hover:shadow-lg transition-all border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:text-red-600 dark:hover:text-red-400"
             >
-              Sign Out
+              {demoMode ? 'Exit Demo' : 'Sign Out'}
             </button>
           </div>
         </div>
 
+        {/* Demo Mode Banner */}
+        {demoMode && (
+          <div className="mb-6 bg-gradient-to-r from-yellow-400 to-orange-400 dark:from-yellow-600 dark:to-orange-600 rounded-lg shadow-lg p-4 border border-yellow-500">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="text-2xl">🎮</div>
+                <div>
+                  <h3 className="font-bold text-gray-900 dark:text-white">Demo Mode Active</h3>
+                  <p className="text-sm text-gray-800 dark:text-gray-100">
+                    You're testing with sample data! This demo data is saved locally and <strong>won't be transferred</strong> when you create an account.
+                  </p>
+                  <p className="text-xs text-gray-700 dark:text-gray-200 mt-1">
+                    💡 Tip: Export your demo portfolio before creating an account if you want to import it later.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsAuthModalOpen(true)}
+                className="bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-900 dark:text-white font-semibold py-2 px-6 rounded-lg shadow-md transition-all whitespace-nowrap"
+              >
+                Create Account
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Wealth Overview */}
         <WealthOverview portfolio={portfolio} />
 
-        {/* Wealth Tracking Settings */}
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6 border border-gray-200 dark:border-gray-700">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <label className="flex items-center gap-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={wealthTrackingEnabled}
-                  onChange={toggleWealthTracking}
-                  className="w-5 h-5 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"
-                />
-                <div>
-                  <span className="text-lg font-semibold text-gray-900 dark:text-white">
-                    Track Wealth Over Time
-                  </span>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
-                    {wealthTrackingEnabled
-                      ? 'Automatically save daily snapshots of your portfolio value'
-                      : 'Enable to see your wealth history and trends'}
-                  </p>
+        {/* Wealth Tracking Settings - Only show for logged-in users */}
+        {!demoMode && (
+          <>
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6 border border-gray-200 dark:border-gray-700">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={wealthTrackingEnabled}
+                      onChange={toggleWealthTracking}
+                      className="w-5 h-5 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"
+                    />
+                    <div>
+                      <span className="text-lg font-semibold text-gray-900 dark:text-white">
+                        Track Wealth Over Time
+                      </span>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">
+                        {wealthTrackingEnabled
+                          ? 'Automatically save daily snapshots of your portfolio value'
+                          : 'Enable to see your wealth history and trends'}
+                      </p>
+                    </div>
+                  </label>
                 </div>
-              </label>
+
+                {wealthTrackingEnabled && (
+                  <button
+                    onClick={async () => {
+                      try {
+                        const success = await createWealthSnapshot();
+                        if (success) {
+                          setToast({ message: 'Snapshot created successfully!', type: 'success' });
+                        } else {
+                          setToast({ message: 'Failed to create snapshot. Check console for details.', type: 'error' });
+                        }
+                      } catch (error) {
+                        console.error('Snapshot button error:', error);
+                        setToast({ message: 'Error creating snapshot', type: 'error' });
+                      }
+                    }}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white font-medium rounded-lg shadow-sm transition-all flex items-center gap-2"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    Take Snapshot Now
+                  </button>
+                )}
+              </div>
             </div>
 
+            {/* Wealth Tracking Graph */}
             {wealthTrackingEnabled && (
-              <button
-                onClick={async () => {
-                  try {
-                    const success = await createWealthSnapshot();
-                    if (success) {
-                      setToast({ message: 'Snapshot created successfully!', type: 'success' });
-                    } else {
-                      setToast({ message: 'Failed to create snapshot. Check console for details.', type: 'error' });
-                    }
-                  } catch (error) {
-                    console.error('Snapshot button error:', error);
-                    setToast({ message: 'Error creating snapshot', type: 'error' });
-                  }
-                }}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white font-medium rounded-lg shadow-sm transition-all flex items-center gap-2"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-                Take Snapshot Now
-              </button>
+              <div className="mb-6">
+                <WealthTrackingGraph isEnabled={wealthTrackingEnabled} />
+              </div>
             )}
-          </div>
-        </div>
-
-        {/* Wealth Tracking Graph */}
-        {wealthTrackingEnabled && (
-          <div className="mb-6">
-            <WealthTrackingGraph isEnabled={wealthTrackingEnabled} />
-          </div>
+          </>
         )}
 
         {/* Tabs */}
@@ -812,6 +875,11 @@ export default function Home() {
               </div>
             </div>
           </div>
+        )}
+
+        {/* Auth Modal */}
+        {isAuthModalOpen && (
+          <AuthModal onClose={() => setIsAuthModalOpen(false)} />
         )}
 
         {/* Toast Notifications */}

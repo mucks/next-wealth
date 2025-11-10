@@ -9,6 +9,7 @@ interface AuthModalProps {
 
 export function AuthModal({ onClose }: AuthModalProps) {
     const [isSignUp, setIsSignUp] = useState(false);
+    const [isResetPassword, setIsResetPassword] = useState(false);
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
@@ -24,7 +25,15 @@ export function AuthModal({ onClose }: AuthModalProps) {
         setMessage(null);
 
         try {
-            if (isSignUp) {
+            if (isResetPassword) {
+                const { error } = await supabase.auth.resetPasswordForEmail(email, {
+                    redirectTo: `${window.location.origin}/reset-password`,
+                });
+
+                if (error) throw error;
+                setMessage('Password reset email sent! Check your inbox.');
+                setEmail('');
+            } else if (isSignUp) {
                 const { error } = await supabase.auth.signUp({
                     email,
                     password,
@@ -60,7 +69,7 @@ export function AuthModal({ onClose }: AuthModalProps) {
                 <div className="p-6 border-b border-gray-200 dark:border-gray-700">
                     <div className="flex justify-between items-center">
                         <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
-                            {isSignUp ? 'Create Account' : 'Sign In'}
+                            {isResetPassword ? 'Reset Password' : (isSignUp ? 'Create Account' : 'Sign In')}
                         </h2>
                         <button
                             onClick={onClose}
@@ -84,6 +93,14 @@ export function AuthModal({ onClose }: AuthModalProps) {
                         </div>
                     )}
 
+                    {isResetPassword && !message && (
+                        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
+                            <p className="text-sm text-blue-800 dark:text-blue-200">
+                                Enter your email address and we'll send you a link to reset your password.
+                            </p>
+                        </div>
+                    )}
+
                     <div>
                         <label className={labelClassName}>Email</label>
                         <input
@@ -97,48 +114,68 @@ export function AuthModal({ onClose }: AuthModalProps) {
                         />
                     </div>
 
-                    <div>
-                        <label className={labelClassName}>Password</label>
-                        <input
-                            type="password"
-                            required
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            placeholder="••••••••"
-                            className={inputClassName}
-                            disabled={loading}
-                            minLength={6}
-                        />
-                        {isSignUp && (
-                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                                Minimum 6 characters
-                            </p>
-                        )}
-                    </div>
+                    {!isResetPassword && (
+                        <div>
+                            <label className={labelClassName}>Password</label>
+                            <input
+                                type="password"
+                                required
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                                placeholder="••••••••"
+                                className={inputClassName}
+                                disabled={loading}
+                                minLength={6}
+                            />
+                            {isSignUp && (
+                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                    Minimum 6 characters
+                                </p>
+                            )}
+                        </div>
+                    )}
 
                     <button
                         type="submit"
                         disabled={loading}
                         className="w-full bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white font-semibold py-3 px-6 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                        {loading ? 'Loading...' : (isSignUp ? 'Sign Up' : 'Sign In')}
+                        {loading ? 'Loading...' : (isResetPassword ? 'Send Reset Email' : (isSignUp ? 'Sign Up' : 'Sign In'))}
                     </button>
 
-                    <div className="text-center">
-                        <button
-                            type="button"
-                            onClick={() => {
-                                setIsSignUp(!isSignUp);
-                                setError(null);
-                                setMessage(null);
-                            }}
-                            className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
-                            disabled={loading}
-                        >
-                            {isSignUp
-                                ? 'Already have an account? Sign in'
-                                : "Don't have an account? Sign up"}
-                        </button>
+                    <div className="text-center space-y-2">
+                        {!isResetPassword && (
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setIsSignUp(!isSignUp);
+                                    setError(null);
+                                    setMessage(null);
+                                }}
+                                className="text-sm text-blue-600 dark:text-blue-400 hover:underline block w-full"
+                                disabled={loading}
+                            >
+                                {isSignUp
+                                    ? 'Already have an account? Sign in'
+                                    : "Don't have an account? Sign up"}
+                            </button>
+                        )}
+
+                        {!isSignUp && (
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setIsResetPassword(!isResetPassword);
+                                    setError(null);
+                                    setMessage(null);
+                                    setPassword('');
+                                }}
+                                className="text-sm text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:underline"
+                                disabled={loading}
+                            >
+                                {isResetPassword ? '← Back to Sign In' : 'Forgot password?'}
+                            </button>
+                        )}
                     </div>
                 </form>
             </div>

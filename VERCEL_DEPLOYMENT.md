@@ -97,9 +97,15 @@ Example configuration:
 Site URL: https://next-wealth.vercel.app
 Additional Redirect URLs:
   - https://next-wealth-*.vercel.app/**
+  - https://next-wealth.vercel.app/reset-password
   - http://localhost:3000/**
   - http://localhost:3001/**
+  - http://localhost:3000/reset-password
+  - http://localhost:3001/reset-password
 ```
+
+**Important for Password Reset:**
+Make sure to include the `/reset-password` URLs in your redirect list. This is where users are sent after clicking the password reset link in their email.
 
 ## Troubleshooting
 
