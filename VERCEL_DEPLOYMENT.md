@@ -7,62 +7,35 @@
 
 ## Environment Variables Needed
 
-Your app requires **3 environment variables**:
+Since you've connected Supabase to Vercel, most environment variables are **automatically set**:
 
+✅ **Auto-set by Supabase Integration:**
 1. `NEXT_PUBLIC_SUPABASE_URL` - Your Supabase project URL
-2. `NEXT_PUBLIC_SUPABASE_ANON_KEY` - Your Supabase public API key
-3. `DATABASE_URL` - Your Supabase database connection string
+2. `NEXT_PUBLIC_SUPABASE_ANON_KEY` - Your Supabase public API key  
+3. `POSTGRES_URL` - Database connection string
+4. `POSTGRES_PRISMA_URL` - Database connection string with pgbouncer (preferred)
+
+**You don't need to manually add these!** The integration handles it automatically.
 
 ## Step-by-Step Deployment
 
-### 1. Get Your Database Connection String
+### 1. Verify Environment Variables (Optional)
 
-Since you've connected Supabase to Vercel, the Supabase URL and anon key should already be set. Now you need to add the `DATABASE_URL`:
-
-1. Go to your Supabase project dashboard
-2. Click **Settings** → **Database**
-3. Scroll to **Connection String** section
-4. Select **Connection pooling** (important for Vercel!)
-5. Choose **Transaction mode** 
-6. Copy the connection string that looks like:
-   ```
-   postgres://postgres.xxxxx:[YOUR-PASSWORD]@aws-0-us-east-1.pooler.supabase.com:6543/postgres?pgbouncer=true
-   ```
-7. Replace `[YOUR-PASSWORD]` with your actual database password
-
-### 2. Add Environment Variables to Vercel
-
-#### Option A: Via Vercel Dashboard (Recommended)
+Since Supabase is connected to Vercel, the environment variables should already be set. You can verify:
 
 1. Go to [vercel.com/dashboard](https://vercel.com/dashboard)
-2. Select your project (or create it if you haven't yet)
+2. Select your project
 3. Go to **Settings** → **Environment Variables**
-4. Add all three variables:
+4. You should see:
+   - `NEXT_PUBLIC_SUPABASE_URL`
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+   - `POSTGRES_URL`
+   - `POSTGRES_PRISMA_URL`
+   - (and other Supabase-related variables)
 
-| Name | Value | Environment |
-|------|-------|-------------|
-| `NEXT_PUBLIC_SUPABASE_URL` | `https://xxxxx.supabase.co` | Production, Preview, Development |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | `eyJhbGc...` (long key) | Production, Preview, Development |
-| `DATABASE_URL` | `postgres://postgres.xxxxx:...` | Production, Preview, Development |
+**If these are missing**, reconnect the Supabase integration in Vercel.
 
-**Note**: If Supabase integration already added the first two, you only need to add `DATABASE_URL`.
-
-#### Option B: Via Vercel CLI
-
-```bash
-# Install Vercel CLI if you haven't
-npm i -g vercel
-
-# Link your project
-vercel link
-
-# Add environment variables
-vercel env add DATABASE_URL
-# Paste your connection string when prompted
-# Select: Production, Preview, Development
-```
-
-### 3. Deploy Your App
+### 2. Deploy Your App
 
 #### Option A: Deploy via Git (Recommended)
 

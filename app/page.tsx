@@ -1,6 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+
+// Force dynamic rendering to avoid build-time errors with Supabase
+export const dynamic = 'force-dynamic';
 import { Portfolio, Asset } from '@/types/assets';
 import { WealthOverview } from '@/components/WealthOverview';
 import { AssetList } from '@/components/AssetList';
@@ -256,7 +259,11 @@ export default function Home() {
             await createAssetInDb(newAsset);
             successCount++;
           } catch (error) {
-            console.error('Error importing asset:', asset.name || asset.symbol || asset.city, error);
+            let identifier = 'unknown';
+            if ('name' in asset && asset.name) identifier = asset.name;
+            else if ('symbol' in asset && asset.symbol) identifier = asset.symbol;
+            else if ('city' in asset && asset.city) identifier = asset.city;
+            console.error('Error importing asset:', identifier, error);
             errorCount++;
           }
         }

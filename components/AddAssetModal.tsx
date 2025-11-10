@@ -64,6 +64,8 @@ export function AddAssetModal({ onClose, onAdd, onUpdate, editingAsset }: AddAss
                     propertyType: 'apartment',
                     purchaseDate: crypto.purchaseDate,
                     notes: crypto.notes || '',
+                    amount: '',
+                    currency: 'USD',
                 });
                 setPriceChange24h(crypto.priceChange24h || 0);
                 setSelectedCrypto(crypto.coinId);
@@ -84,6 +86,8 @@ export function AddAssetModal({ onClose, onAdd, onUpdate, editingAsset }: AddAss
                     propertyType: 'apartment',
                     purchaseDate: new Date().toISOString().split('T')[0],
                     notes: stock.notes || '',
+                    amount: '',
+                    currency: 'USD',
                 });
                 setStockPriceChange24h(stock.priceChange24h || 0);
                 setSelectedStock(stock.symbol);
