@@ -1,8 +1,9 @@
 import { pgTable, text, decimal, timestamp, uuid, index, pgEnum } from 'drizzle-orm/pg-core';
 
 // Enums
-export const assetTypeEnum = pgEnum('asset_type', ['crypto', 'stock', 'real-estate', 'cash']);
+export const assetTypeEnum = pgEnum('asset_type', ['crypto', 'stock', 'real-estate', 'cash', 'metal']);
 export const propertyTypeEnum = pgEnum('property_type', ['house', 'apartment', 'commercial', 'land', 'other']);
+export const metalTypeEnum = pgEnum('metal_type', ['gold', 'silver', 'platinum', 'palladium']);
 
 // Assets table
 export const assets = pgTable('assets', {
@@ -30,6 +31,11 @@ export const assets = pgTable('assets', {
     // Cash fields
     amount: decimal('amount'),
     currency: text('currency'),
+
+    // Metal fields
+    metalType: metalTypeEnum('metal_type'),
+    weight: decimal('weight'), // in troy ounces (standardized)
+    unit: text('unit'), // 'oz', 'kg', 'g' (original unit for display)
 
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
@@ -77,6 +83,7 @@ export const wealthHistory = pgTable('wealth_history', {
     cryptoValue: decimal('crypto_value').notNull(),
     stocksValue: decimal('stocks_value').notNull(),
     realEstateValue: decimal('real_estate_value').notNull(),
+    metalsValue: decimal('metals_value').notNull(),
     cashValue: decimal('cash_value').notNull(), // Already converted to USD
     createdAt: timestamp('created_at').defaultNow().notNull(),
 }, (table) => ({

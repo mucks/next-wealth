@@ -17,6 +17,7 @@ import { createClient } from '@/lib/supabase/client';
 import { fetchUserPortfolio, createAsset as createAssetInDb, updateAsset, deleteAsset } from '@/lib/db/assets';
 import type { User } from '@supabase/supabase-js';
 import { convertCashAssetsToUSD } from '@/services/currencyService';
+import { convertToTroyOunces } from '@/services/metalService';
 import { isDemoMode, enableDemoMode, disableDemoMode, getDemoPortfolio, saveDemoPortfolio, addDemoAsset, updateDemoAsset, deleteDemoAsset, deleteAllDemoAssets } from '@/lib/demoMode';
 
 export default function Home() {
@@ -29,12 +30,13 @@ export default function Home() {
     stocks: [],
     realEstate: [],
     cash: [],
+    metals: [],
   });
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isDeleteAllModalOpen, setIsDeleteAllModalOpen] = useState(false);
   const [editingAsset, setEditingAsset] = useState<Asset | null>(null);
-  const [activeTab, setActiveTab] = useState<'all' | 'crypto' | 'stocks' | 'real-estate' | 'cash'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'crypto' | 'stocks' | 'real-estate' | 'cash' | 'metals'>('all');
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<{
     title: string;
@@ -205,10 +207,17 @@ export default function Home() {
         (sum, asset) => sum + asset.squareMeters * asset.pricePerSqm,
         0
       );
+      const metalsValue = portfolio.metals.reduce(
+        (sum, asset) => {
+          const weightInOz = convertToTroyOunces(asset.weight, asset.unit);
+          return sum + weightInOz * asset.currentPrice;
+        },
+        0
+      );
       const cashValue = await convertCashAssetsToUSD(
         portfolio.cash.map(asset => ({ amount: asset.amount, currency: asset.currency }))
       );
-      const totalValue = cryptoValue + stocksValue + realEstateValue + cashValue;
+      const totalValue = cryptoValue + stocksValue + realEstateValue + metalsValue + cashValue;
 
       const response = await fetch('/api/wealth-history', {
         method: 'POST',
@@ -218,6 +227,7 @@ export default function Home() {
           cryptoValue,
           stocksValue,
           realEstateValue,
+          metalsValue,
           cashValue,
         }),
       });
@@ -332,7 +342,7 @@ export default function Home() {
     if (demoMode) {
       disableDemoMode();
       setDemoMode(false);
-      setPortfolio({ crypto: [], stocks: [], realEstate: [], cash: [] });
+      setPortfolio({ crypto: [], stocks: [], realEstate: [], cash: [], metals: [] });
       setToast({ message: 'Demo mode ended', type: 'info' });
     } else {
       await supabase.auth.signOut();
@@ -401,7 +411,7 @@ export default function Home() {
         const text = await file.text();
         const importedPortfolio: Portfolio = JSON.parse(text);
 
-        // Validate the structure
+        // Validate the structure (metals is optional for backward compatibility)
         if (!importedPortfolio.crypto || !importedPortfolio.stocks || !importedPortfolio.realEstate || !importedPortfolio.cash) {
           setToast({ message: 'Invalid backup file format', type: 'error' });
           return;
@@ -413,6 +423,7 @@ export default function Home() {
           ...importedPortfolio.stocks,
           ...importedPortfolio.realEstate,
           ...importedPortfolio.cash,
+          ...(importedPortfolio.metals || []),
         ];
 
         let successCount = 0;
@@ -476,6 +487,16 @@ export default function Home() {
                 currency: asset.currency || 'USD',
                 name: asset.name || `${asset.currency} Cash`,
               };
+            } else if (asset.type === 'metal') {
+              newAsset = {
+                ...newAsset,
+                metalType: asset.metalType || 'gold',
+                weight: asset.weight || 0,
+                unit: asset.unit || 'oz',
+                name: asset.name || `${asset.metalType}`,
+                currentPrice: asset.currentPrice || 0,
+                priceChange24h: asset.priceChange24h || 0,
+              };
             }
 
             // Small delay to ensure unique timestamps
@@ -532,7 +553,7 @@ export default function Home() {
     setEditingAsset(null);
   };
 
-  const allAssets: Asset[] = [...portfolio.crypto, ...portfolio.stocks, ...portfolio.realEstate, ...portfolio.cash];
+  const allAssets: Asset[] = [...portfolio.crypto, ...portfolio.stocks, ...portfolio.realEstate, ...portfolio.cash, ...portfolio.metals];
 
   const getFilteredAssets = () => {
     if (activeTab === 'all') return allAssets;
@@ -540,6 +561,7 @@ export default function Home() {
     if (activeTab === 'stocks') return portfolio.stocks;
     if (activeTab === 'real-estate') return portfolio.realEstate;
     if (activeTab === 'cash') return portfolio.cash;
+    if (activeTab === 'metals') return portfolio.metals;
     return allAssets;
   };
 
@@ -782,6 +804,7 @@ export default function Home() {
             { id: 'crypto', label: 'Crypto' },
             { id: 'stocks', label: 'Stocks' },
             { id: 'real-estate', label: 'Real Estate' },
+            { id: 'metals', label: 'Metals' },
             { id: 'cash', label: 'Cash' },
           ].map((tab) => (
             <button

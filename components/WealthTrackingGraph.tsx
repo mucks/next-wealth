@@ -8,6 +8,7 @@ interface WealthSnapshot {
     cryptoValue: number;
     stocksValue: number;
     realEstateValue: number;
+    metalsValue: number;
     cashValue: number;
 }
 
@@ -334,11 +335,12 @@ export function WealthTrackingGraph({ isEnabled }: WealthTrackingGraphProps) {
             </div>
 
             {/* Legend */}
-            <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="mt-6 grid grid-cols-2 md:grid-cols-5 gap-4">
                 {[
-                    { label: 'Crypto', value: filteredHistory[filteredHistory.length - 1]?.cryptoValue || 0, color: 'bg-yellow-500' },
+                    { label: 'Crypto', value: filteredHistory[filteredHistory.length - 1]?.cryptoValue || 0, color: 'bg-orange-500' },
                     { label: 'Stocks', value: filteredHistory[filteredHistory.length - 1]?.stocksValue || 0, color: 'bg-blue-500' },
                     { label: 'Real Estate', value: filteredHistory[filteredHistory.length - 1]?.realEstateValue || 0, color: 'bg-green-500' },
+                    { label: 'Metals', value: filteredHistory[filteredHistory.length - 1]?.metalsValue || 0, color: 'bg-yellow-500' },
                     { label: 'Cash', value: filteredHistory[filteredHistory.length - 1]?.cashValue || 0, color: 'bg-emerald-500' },
                 ].map(({ label, value, color }) => (
                     <div key={label} className="flex items-center gap-2">

@@ -2,6 +2,7 @@ import { db } from './drizzle';
 import { priceCache, assets } from './schema';
 import { eq } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
+import { fetchMetalPrice } from '@/services/metalService';
 
 const CACHE_DURATION_MS = 60000; // 1 minute cache
 
@@ -140,10 +141,28 @@ async function fetchRealEstatePriceDirect(city: string, propertyType: 'apartment
     };
 }
 
+async function fetchMetalPriceDirect(metalType: 'gold' | 'silver' | 'platinum' | 'palladium'): Promise<{ price: number; changePercent?: number; name?: string } | null> {
+    try {
+        const metalData = await fetchMetalPrice(metalType);
+        if (!metalData) {
+            return null;
+        }
+
+        return {
+            price: metalData.price,
+            changePercent: metalData.changePercent,
+            name: metalData.name,
+        };
+    } catch (error) {
+        console.error('Error fetching metal price:', error);
+        return null;
+    }
+}
+
 // Get cached price or fetch new one
 export async function getCachedPrice(
     id: string,
-    type: 'crypto' | 'stock' | 'real-estate',
+    type: 'crypto' | 'stock' | 'real-estate' | 'metal',
     cityPropertyType?: { city: string; propertyType: 'apartment' | 'house' }
 ): Promise<CachedPrice | null> {
     try {
@@ -185,6 +204,9 @@ export async function getCachedPrice(
                     name: `${cityPropertyType.city} - ${cityPropertyType.propertyType}`,
                 };
             }
+        } else if (type === 'metal') {
+            // id format is the metal type: 'gold', 'silver', etc.
+            priceData = await fetchMetalPriceDirect(id as 'gold' | 'silver' | 'platinum' | 'palladium');
         }
 
         if (!priceData) {
@@ -262,6 +284,8 @@ export async function refreshUserPrices(userId: string) {
                         'real-estate',
                         { city: asset.city, propertyType: asset.propertyType as 'apartment' | 'house' }
                     );
+                } else if (asset.type === 'metal' && asset.metalType) {
+                    priceData = await getCachedPrice(asset.metalType, 'metal');
                 }
 
                 if (priceData) {
@@ -270,8 +294,8 @@ export async function refreshUserPrices(userId: string) {
                         updatedAt: sql`NOW()`,
                     };
 
-                    // For crypto/stock, update currentPrice and priceChange24h
-                    if (asset.type === 'crypto' || asset.type === 'stock') {
+                    // For crypto/stock/metal, update currentPrice and priceChange24h
+                    if (asset.type === 'crypto' || asset.type === 'stock' || asset.type === 'metal') {
                         updateData.currentPrice = priceData.price.toString();
                         updateData.priceChange24h = priceData.priceChange24h?.toString() || null;
                     }

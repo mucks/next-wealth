@@ -42,6 +42,7 @@ export async function GET(request: NextRequest) {
             cryptoValue: parseFloat(h.cryptoValue),
             stocksValue: parseFloat(h.stocksValue),
             realEstateValue: parseFloat(h.realEstateValue),
+            metalsValue: h.metalsValue ? parseFloat(h.metalsValue) : 0,
             cashValue: parseFloat(h.cashValue),
             createdAt: h.createdAt
         }));
@@ -77,7 +78,7 @@ export async function POST(request: NextRequest) {
         }
 
         const body = await request.json();
-        const { totalValue, cryptoValue, stocksValue, realEstateValue, cashValue } = body;
+        const { totalValue, cryptoValue, stocksValue, realEstateValue, metalsValue, cashValue } = body;
 
         // Get today's date in YYYY-MM-DD format
         const today = new Date().toISOString().split('T')[0];
@@ -100,6 +101,7 @@ export async function POST(request: NextRequest) {
             cryptoValue: cryptoValue.toString(),
             stocksValue: stocksValue.toString(),
             realEstateValue: realEstateValue.toString(),
+            metalsValue: (metalsValue || 0).toString(),
             cashValue: cashValue.toString(),
             createdAt: new Date()
         };

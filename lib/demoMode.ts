@@ -67,6 +67,32 @@ export function enableDemoMode() {
                     notes: 'Demo asset',
                 }
             ],
+            metals: [
+                {
+                    id: 'demo-metal-1',
+                    type: 'metal',
+                    name: 'Gold',
+                    metalType: 'gold',
+                    weight: 10,
+                    unit: 'oz',
+                    currentPrice: 2000,
+                    priceChange24h: 1.5,
+                    purchaseDate: new Date().toISOString().split('T')[0],
+                    notes: 'Demo asset',
+                },
+                {
+                    id: 'demo-metal-2',
+                    type: 'metal',
+                    name: 'Silver',
+                    metalType: 'silver',
+                    weight: 1000,
+                    unit: 'g',
+                    currentPrice: 25,
+                    priceChange24h: -0.5,
+                    purchaseDate: new Date().toISOString().split('T')[0],
+                    notes: 'Demo asset in grams',
+                }
+            ],
         };
         saveDemoPortfolio(samplePortfolio);
     }
@@ -80,18 +106,23 @@ export function disableDemoMode() {
 
 export function getDemoPortfolio(): Portfolio {
     if (typeof window === 'undefined') {
-        return { crypto: [], stocks: [], realEstate: [], cash: [] };
+        return { crypto: [], stocks: [], realEstate: [], cash: [], metals: [] };
     }
 
     const stored = localStorage.getItem(DEMO_PORTFOLIO_KEY);
     if (!stored) {
-        return { crypto: [], stocks: [], realEstate: [], cash: [] };
+        return { crypto: [], stocks: [], realEstate: [], cash: [], metals: [] };
     }
 
     try {
-        return JSON.parse(stored);
+        const portfolio = JSON.parse(stored);
+        // Ensure metals array exists for backward compatibility
+        if (!portfolio.metals) {
+            portfolio.metals = [];
+        }
+        return portfolio;
     } catch {
-        return { crypto: [], stocks: [], realEstate: [], cash: [] };
+        return { crypto: [], stocks: [], realEstate: [], cash: [], metals: [] };
     }
 }
 
@@ -111,6 +142,8 @@ export function addDemoAsset(asset: Asset) {
         portfolio.realEstate.push(asset);
     } else if (asset.type === 'cash') {
         portfolio.cash.push(asset);
+    } else if (asset.type === 'metal') {
+        portfolio.metals.push(asset);
     }
 
     saveDemoPortfolio(portfolio);
@@ -131,6 +164,9 @@ export function updateDemoAsset(asset: Asset) {
     } else if (asset.type === 'cash') {
         const index = portfolio.cash.findIndex(a => a.id === asset.id);
         if (index !== -1) portfolio.cash[index] = asset;
+    } else if (asset.type === 'metal') {
+        const index = portfolio.metals.findIndex(a => a.id === asset.id);
+        if (index !== -1) portfolio.metals[index] = asset;
     }
 
     saveDemoPortfolio(portfolio);
@@ -147,12 +183,14 @@ export function deleteDemoAsset(id: string, type: Asset['type']) {
         portfolio.realEstate = portfolio.realEstate.filter(a => a.id !== id);
     } else if (type === 'cash') {
         portfolio.cash = portfolio.cash.filter(a => a.id !== id);
+    } else if (type === 'metal') {
+        portfolio.metals = portfolio.metals.filter(a => a.id !== id);
     }
 
     saveDemoPortfolio(portfolio);
 }
 
 export function deleteAllDemoAssets() {
-    saveDemoPortfolio({ crypto: [], stocks: [], realEstate: [], cash: [] });
+    saveDemoPortfolio({ crypto: [], stocks: [], realEstate: [], cash: [], metals: [] });
 }
 

@@ -1,6 +1,7 @@
-import { Asset, CryptoAsset, StockAsset, RealEstateAsset, CashAsset } from '@/types/assets';
+import { Asset, CryptoAsset, StockAsset, RealEstateAsset, CashAsset, MetalAsset } from '@/types/assets';
 import { useState, useEffect } from 'react';
 import { convertToUSD } from '@/services/currencyService';
+import { convertToTroyOunces } from '@/services/metalService';
 
 interface AssetListProps {
     assets: Asset[];
@@ -65,6 +66,11 @@ export function AssetList({ assets, onDelete, onEdit }: AssetListProps) {
         }
         if (asset.type === 'real-estate') {
             return asset.squareMeters * asset.pricePerSqm;
+        }
+        if (asset.type === 'metal') {
+            const metalAsset = asset as MetalAsset;
+            const weightInOz = convertToTroyOunces(metalAsset.weight, metalAsset.unit);
+            return weightInOz * metalAsset.currentPrice;
         }
         // cash - use converted USD value if available
         return cashUSDValues[asset.id] || (asset as CashAsset).amount;
@@ -232,6 +238,39 @@ export function AssetList({ assets, onDelete, onEdit }: AssetListProps) {
                                                     <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Currency</p>
                                                     <p className="font-semibold text-gray-900 dark:text-white">
                                                         {(asset as CashAsset).currency}
+                                                    </p>
+                                                </div>
+                                            </>
+                                        )}
+                                        {asset.type === 'metal' && (
+                                            <>
+                                                <div>
+                                                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Metal Type</p>
+                                                    <p className="font-semibold text-gray-900 dark:text-white capitalize">
+                                                        {(asset as MetalAsset).metalType}
+                                                    </p>
+                                                </div>
+                                                <div>
+                                                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Weight</p>
+                                                    <p className="font-semibold text-gray-900 dark:text-white">
+                                                        {(asset as MetalAsset).weight} {(asset as MetalAsset).unit}
+                                                    </p>
+                                                </div>
+                                                <div>
+                                                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                                                        Price/{(asset as MetalAsset).unit === 'oz' ? 'troy oz' : (asset as MetalAsset).unit}
+                                                    </p>
+                                                    <p className="font-semibold text-gray-900 dark:text-white">
+                                                        {(() => {
+                                                            const metalAsset = asset as MetalAsset;
+                                                            let pricePerUnit = metalAsset.currentPrice;
+                                                            if (metalAsset.unit === 'g') {
+                                                                pricePerUnit = metalAsset.currentPrice / 31.1035;
+                                                            } else if (metalAsset.unit === 'kg') {
+                                                                pricePerUnit = metalAsset.currentPrice * 32.1507;
+                                                            }
+                                                            return formatCurrency(pricePerUnit);
+                                                        })()}
                                                     </p>
                                                 </div>
                                             </>

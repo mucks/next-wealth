@@ -1,13 +1,20 @@
 import { Portfolio } from '@/types/assets';
 import { useState, useEffect } from 'react';
 import { convertCashAssetsToUSD } from '@/services/currencyService';
+import { convertToTroyOunces } from '@/services/metalService';
 
 interface WealthOverviewProps {
     portfolio: Portfolio;
 }
 
 export function WealthOverview({ portfolio }: WealthOverviewProps) {
-    const [cashValueUSD, setCashValueUSD] = useState(0);
+    // Calculate USD cash sum directly (always up-to-date, no state needed)
+    const usdCashSum = portfolio.cash
+        .filter(asset => asset.currency === 'USD')
+        .reduce((sum, asset) => sum + asset.amount, 0);
+
+    // Only use state for the converted total (including non-USD currencies)
+    const [convertedCashTotal, setConvertedCashTotal] = useState<number | null>(null);
 
     const calculateCryptoValue = () => {
         return portfolio.crypto.reduce((sum, asset) => sum + asset.quantity * asset.currentPrice, 0);
@@ -21,27 +28,36 @@ export function WealthOverview({ portfolio }: WealthOverviewProps) {
         return portfolio.realEstate.reduce((sum, asset) => sum + (asset.squareMeters * asset.pricePerSqm), 0);
     };
 
+    const calculateMetalsValue = () => {
+        return portfolio.metals.reduce((sum, asset) => {
+            const weightInOz = convertToTroyOunces(asset.weight, asset.unit);
+            return sum + (weightInOz * asset.currentPrice);
+        }, 0);
+    };
+
     // Convert all cash to USD (including non-USD currencies)
     useEffect(() => {
-        // Immediately set USD cash (no conversion needed)
-        const usdCashSum = portfolio.cash
-            .filter(asset => asset.currency === 'USD')
-            .reduce((sum, asset) => sum + asset.amount, 0);
+        // Check if we have non-USD currencies
+        const hasNonUSD = portfolio.cash.some(asset => asset.currency !== 'USD');
 
-        setCashValueUSD(usdCashSum);
+        if (!hasNonUSD) {
+            setConvertedCashTotal(null); // No conversion needed, use usdCashSum directly
+            return;
+        }
 
-        // Then convert non-USD currencies and update
+        // Convert all currencies to USD
         const convertCash = async () => {
             const usdValue = await convertCashAssetsToUSD(
                 portfolio.cash.map(asset => ({ amount: asset.amount, currency: asset.currency }))
             );
-            setCashValueUSD(usdValue);
+            setConvertedCashTotal(usdValue);
         };
 
-        if (portfolio.cash.length > 0) {
-            convertCash();
-        }
+        convertCash();
     }, [portfolio.cash]);
+
+    // Use converted total if available, otherwise use USD sum
+    const cashValueUSD = convertedCashTotal ?? usdCashSum;
 
     const calculateCryptoGainLoss = () => {
         // For crypto, we just show current value since we don't track purchase price
@@ -61,7 +77,8 @@ export function WealthOverview({ portfolio }: WealthOverviewProps) {
     const cryptoValue = calculateCryptoValue();
     const stocksValue = calculateStocksValue();
     const realEstateValue = calculateRealEstateValue();
-    const totalValue = cryptoValue + stocksValue + realEstateValue + cashValueUSD;
+    const metalsValue = calculateMetalsValue();
+    const totalValue = cryptoValue + stocksValue + realEstateValue + metalsValue + cashValueUSD;
 
     const totalGainLoss = calculateCryptoGainLoss() + calculateStocksGainLoss() + calculateRealEstateGainLoss();
     const totalGainLossPercent = totalValue > 0 ? (totalGainLoss / (totalValue - totalGainLoss)) * 100 : 0;
@@ -101,6 +118,14 @@ export function WealthOverview({ portfolio }: WealthOverviewProps) {
             count: portfolio.realEstate.length,
         },
         {
+            name: 'Metals',
+            value: metalsValue,
+            color: 'bg-yellow-500',
+            textColor: 'text-yellow-600',
+            bgLight: 'bg-yellow-50',
+            count: portfolio.metals.length,
+        },
+        {
             name: 'Cash',
             value: cashValueUSD,
             color: 'bg-emerald-500',
@@ -129,7 +154,7 @@ export function WealthOverview({ portfolio }: WealthOverviewProps) {
                     </div>
                     <div className="text-right">
                         <p className="text-blue-100 dark:text-blue-200 text-sm mb-1">Total Assets</p>
-                        <p className="text-3xl font-bold">{portfolio.crypto.length + portfolio.stocks.length + portfolio.realEstate.length + portfolio.cash.length}</p>
+                        <p className="text-3xl font-bold">{portfolio.crypto.length + portfolio.stocks.length + portfolio.realEstate.length + portfolio.metals.length + portfolio.cash.length}</p>
                     </div>
                 </div>
             </div>

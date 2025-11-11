@@ -39,6 +39,20 @@
             "propertyType": "house"
         }
     ],
+    "metals": [
+        {
+            "type": "metal",
+            "metalType": "gold",
+            "weight": 10,
+            "unit": "oz"
+        },
+        {
+            "type": "metal",
+            "metalType": "silver",
+            "weight": 100,
+            "unit": "oz"
+        }
+    ],
     "cash": [
         {
             "type": "cash",

@@ -1,4 +1,4 @@
-import { Asset, Portfolio, CryptoAsset, StockAsset, RealEstateAsset, CashAsset } from '@/types/assets';
+import { Asset, Portfolio, CryptoAsset, StockAsset, RealEstateAsset, CashAsset, MetalAsset } from '@/types/assets';
 
 export async function fetchUserPortfolio(): Promise<Portfolio> {
     try {
@@ -14,7 +14,7 @@ export async function fetchUserPortfolio(): Promise<Portfolio> {
         return portfolio;
     } catch (error) {
         console.error('Error fetching portfolio:', error);
-        return { crypto: [], stocks: [], realEstate: [], cash: [] };
+        return { crypto: [], stocks: [], realEstate: [], cash: [], metals: [] };
     }
 }
 
@@ -105,6 +105,15 @@ function mapAssetToDbAsset(asset: Asset): any {
             amount: asset.amount.toString(),
             currency: asset.currency,
         };
+    } else if (asset.type === 'metal') {
+        return {
+            ...base,
+            metalType: asset.metalType,
+            weight: asset.weight.toString(),
+            unit: asset.unit,
+            currentPrice: asset.currentPrice.toString(),
+            priceChange24h: (asset.priceChange24h || 0).toString(),
+        };
     }
 
     return base;
@@ -155,6 +164,16 @@ function mapDbAssetToAsset(dbAsset: any): Asset {
             amount: parseFloat(dbAsset.amount),
             currency: dbAsset.currency,
         } as CashAsset;
+    } else if (dbAsset.type === 'metal') {
+        return {
+            ...base,
+            type: 'metal',
+            metalType: dbAsset.metalType,
+            weight: parseFloat(dbAsset.weight),
+            unit: dbAsset.unit,
+            currentPrice: parseFloat(dbAsset.currentPrice),
+            priceChange24h: parseFloat(dbAsset.priceChange24h || '0'),
+        } as MetalAsset;
     }
 
     throw new Error(`Unknown asset type: ${dbAsset.type}`);

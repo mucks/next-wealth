@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Asset, AssetType, CryptoAsset, StockAsset, RealEstateAsset, CashAsset } from '@/types/assets';
+import { Asset, AssetType, CryptoAsset, StockAsset, RealEstateAsset, CashAsset, MetalAsset } from '@/types/assets';
 import { fetchCryptoPrice, POPULAR_CRYPTOS } from '@/services/cryptoService';
 import { fetchRealEstatePrice, searchCities } from '@/services/realEstateService';
 import { fetchStockPrice, POPULAR_STOCKS } from '@/services/stockService';
+import { fetchMetalPrice, convertToTroyOunces } from '@/services/metalService';
 
 interface AddAssetModalProps {
     onClose: () => void;
@@ -31,18 +32,23 @@ export function AddAssetModal({ onClose, onAdd, onUpdate, editingAsset }: AddAss
         notes: '',
         amount: '',
         currency: 'USD',
+        metalType: 'gold' as 'gold' | 'silver' | 'platinum' | 'palladium',
+        weight: '',
+        unit: 'oz' as 'oz' | 'kg' | 'g',
     });
     const [loadingPrice, setLoadingPrice] = useState(false);
     const [selectedCrypto, setSelectedCrypto] = useState('');
     const [selectedStock, setSelectedStock] = useState('');
     const [loadingStockPrice, setLoadingStockPrice] = useState(false);
     const [loadingRealEstatePrice, setLoadingRealEstatePrice] = useState(false);
+    const [loadingMetalPrice, setLoadingMetalPrice] = useState(false);
     const [citySuggestions, setCitySuggestions] = useState<string[]>([]);
     const [showCitySuggestions, setShowCitySuggestions] = useState(false);
 
     // Fetch crypto price when selected
     const [priceChange24h, setPriceChange24h] = useState<number>(0);
     const [stockPriceChange24h, setStockPriceChange24h] = useState<number>(0);
+    const [metalPriceChange24h, setMetalPriceChange24h] = useState<number>(0);
 
     // Initialize form with existing asset data when editing
     useEffect(() => {
@@ -130,7 +136,34 @@ export function AddAssetModal({ onClose, onAdd, onUpdate, editingAsset }: AddAss
                     notes: cash.notes || '',
                     amount: cash.amount.toString(),
                     currency: cash.currency,
+                    metalType: 'gold',
+                    weight: '',
+                    unit: 'oz',
                 });
+            } else if (editingAsset.type === 'metal') {
+                const metal = editingAsset as MetalAsset;
+                setFormData({
+                    name: metal.name,
+                    symbol: '',
+                    coinId: '',
+                    quantity: '',
+                    purchasePrice: '',
+                    currentPrice: metal.currentPrice.toString(),
+                    address: '',
+                    city: '',
+                    squareMeters: '',
+                    pricePerSqm: '',
+                    currentValue: '',
+                    propertyType: 'apartment',
+                    purchaseDate: metal.purchaseDate,
+                    notes: metal.notes || '',
+                    amount: '',
+                    currency: 'USD',
+                    metalType: metal.metalType,
+                    weight: metal.weight.toString(),
+                    unit: metal.unit,
+                });
+                setMetalPriceChange24h(metal.priceChange24h || 0);
             }
         }
     }, [editingAsset]);
@@ -181,6 +214,24 @@ export function AddAssetModal({ onClose, onAdd, onUpdate, editingAsset }: AddAss
             return () => clearTimeout(timeoutId);
         }
     }, [formData.symbol, assetType]);
+
+    // Fetch metal price when metal type changes
+    useEffect(() => {
+        if (formData.metalType && assetType === 'metal') {
+            setLoadingMetalPrice(true);
+            fetchMetalPrice(formData.metalType).then(priceData => {
+                if (priceData) {
+                    setFormData(prev => ({
+                        ...prev,
+                        name: priceData.name,
+                        currentPrice: priceData.price.toString(),
+                    }));
+                    setMetalPriceChange24h(priceData.changePercent || 0);
+                }
+                setLoadingMetalPrice(false);
+            });
+        }
+    }, [formData.metalType, assetType]);
 
     // Fetch real estate price when city or property type changes
     useEffect(() => {
@@ -277,7 +328,7 @@ export function AddAssetModal({ onClose, onAdd, onUpdate, editingAsset }: AddAss
                 propertyType: formData.propertyType,
                 purchaseDate: new Date().toISOString().split('T')[0], // Default to today
             } as RealEstateAsset;
-        } else {
+        } else if (assetType === 'cash') {
             // Cash
             const cashName = formData.name || `${formData.currency} Cash`;
 
@@ -288,6 +339,20 @@ export function AddAssetModal({ onClose, onAdd, onUpdate, editingAsset }: AddAss
                 amount: parseFloat(formData.amount),
                 currency: formData.currency,
             } as CashAsset;
+        } else {
+            // Metal
+            const metalName = formData.name || `${formData.metalType.charAt(0).toUpperCase() + formData.metalType.slice(1)}`;
+
+            newAsset = {
+                ...baseAsset,
+                name: metalName,
+                type: 'metal',
+                metalType: formData.metalType,
+                weight: parseFloat(formData.weight),
+                unit: formData.unit,
+                currentPrice: parseFloat(formData.currentPrice),
+                priceChange24h: metalPriceChange24h,
+            } as MetalAsset;
         }
 
         if (isEditMode) {
@@ -329,11 +394,12 @@ export function AddAssetModal({ onClose, onAdd, onUpdate, editingAsset }: AddAss
                             <label className={labelClassName}>
                                 Asset Type
                             </label>
-                            <div className="grid grid-cols-4 gap-3">
+                            <div className="grid grid-cols-5 gap-3">
                                 {[
                                     { value: 'crypto', label: 'Crypto', icon: '₿' },
                                     { value: 'stock', label: 'Stock', icon: '📈' },
                                     { value: 'real-estate', label: 'Real Estate', icon: '🏠' },
+                                    { value: 'metal', label: 'Metals', icon: '🥇' },
                                     { value: 'cash', label: 'Cash', icon: '💵' },
                                 ].map((type) => (
                                     <button
@@ -848,6 +914,117 @@ export function AddAssetModal({ onClose, onAdd, onUpdate, editingAsset }: AddAss
                                     value={formData.notes}
                                     onChange={(e) => handleChange('notes', e.target.value)}
                                     placeholder="Add any notes about this cash holding..."
+                                    rows={2}
+                                    className={inputClassName}
+                                />
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Metal Form */}
+                    {assetType === 'metal' && (
+                        <div className="space-y-4 mb-6 p-4 bg-gradient-to-br from-yellow-50 to-orange-50 dark:from-yellow-900/20 dark:to-orange-900/20 rounded-lg border border-yellow-200 dark:border-yellow-800">
+                            <h3 className="font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+                                <span>🥇</span> Metal Details
+                            </h3>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className={labelClassName}>
+                                        Metal Type *
+                                    </label>
+                                    <select
+                                        required
+                                        value={formData.metalType}
+                                        onChange={(e) => handleChange('metalType', e.target.value)}
+                                        className={inputClassName}
+                                    >
+                                        <option value="gold">🥇 Gold</option>
+                                        <option value="silver">🥈 Silver</option>
+                                        <option value="platinum">⚪ Platinum</option>
+                                        <option value="palladium">⚪ Palladium</option>
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label className={labelClassName}>
+                                        Unit *
+                                    </label>
+                                    <select
+                                        required
+                                        value={formData.unit}
+                                        onChange={(e) => handleChange('unit', e.target.value)}
+                                        className={inputClassName}
+                                    >
+                                        <option value="oz">Troy Ounces (oz)</option>
+                                        <option value="kg">Kilograms (kg)</option>
+                                        <option value="g">Grams (g)</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className={labelClassName}>
+                                    Weight *
+                                </label>
+                                <input
+                                    type="number"
+                                    step="0.001"
+                                    required
+                                    value={formData.weight}
+                                    onChange={(e) => handleChange('weight', e.target.value)}
+                                    placeholder="10"
+                                    className={inputClassName}
+                                />
+                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                    Weight in {formData.unit === 'oz' ? 'troy ounces' : formData.unit}
+                                </p>
+                            </div>
+
+                            {loadingMetalPrice && (
+                                <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
+                                    <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                    </svg>
+                                    <span className="text-sm">Fetching {formData.metalType} price...</span>
+                                </div>
+                            )}
+
+                            {formData.currentPrice && (
+                                <div className="bg-white dark:bg-gray-700 p-3 rounded-lg border border-yellow-300 dark:border-yellow-700">
+                                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                                        Current Price (per {formData.unit === 'oz' ? 'troy oz' : formData.unit})
+                                    </p>
+                                    <p className="text-lg font-bold text-gray-900 dark:text-white">
+                                        ${(() => {
+                                            const pricePerOz = parseFloat(formData.currentPrice);
+                                            if (formData.unit === 'oz') return pricePerOz;
+                                            if (formData.unit === 'g') return pricePerOz / 31.1035;
+                                            return pricePerOz * 32.1507; // kg
+                                        })().toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </p>
+                                    {metalPriceChange24h !== 0 && (
+                                        <p className={`text-sm font-semibold ${metalPriceChange24h >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                                            {metalPriceChange24h >= 0 ? '↑' : '↓'} {Math.abs(metalPriceChange24h).toFixed(2)}%
+                                        </p>
+                                    )}
+                                    {formData.weight && (
+                                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                                            Total Value: ${(convertToTroyOunces(parseFloat(formData.weight), formData.unit) * parseFloat(formData.currentPrice)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                        </p>
+                                    )}
+                                </div>
+                            )}
+
+                            <div>
+                                <label className={labelClassName}>
+                                    Notes (Optional)
+                                </label>
+                                <textarea
+                                    value={formData.notes}
+                                    onChange={(e) => handleChange('notes', e.target.value)}
+                                    placeholder="Add any notes about this metal holding..."
                                     rows={2}
                                     className={inputClassName}
                                 />

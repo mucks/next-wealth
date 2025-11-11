@@ -23,6 +23,7 @@ export async function GET() {
             stocks: userAssets.filter(a => a.type === 'stock').map(transformAsset),
             realEstate: userAssets.filter(a => a.type === 'real-estate').map(transformAsset),
             cash: userAssets.filter(a => a.type === 'cash').map(transformAsset),
+            metals: userAssets.filter(a => a.type === 'metal').map(transformAsset),
         };
 
         return NextResponse.json(portfolio);
@@ -55,6 +56,10 @@ function transformAsset(asset: any) {
         // Cash fields
         amount: asset.amount ? parseFloat(asset.amount) : undefined,
         currency: asset.currency || undefined,
+        // Metal fields
+        metalType: asset.metalType || undefined,
+        weight: asset.weight ? parseFloat(asset.weight) : undefined,
+        unit: asset.unit || undefined,
     };
 }
 
@@ -97,6 +102,12 @@ export async function POST(request: NextRequest) {
             const priceData = await getCachedPrice(cacheId, 'real-estate', { city: body.city, propertyType: body.propertyType });
             if (priceData) {
                 assetData.pricePerSqm = priceData.price.toString();
+            }
+        } else if (!skipPrice && body.type === 'metal' && body.metalType && (!body.currentPrice || parseFloat(body.currentPrice) === 0)) {
+            const priceData = await getCachedPrice(body.metalType, 'metal');
+            if (priceData) {
+                assetData.currentPrice = priceData.price.toString();
+                assetData.priceChange24h = priceData.priceChange24h?.toString() || null;
             }
         }
 
